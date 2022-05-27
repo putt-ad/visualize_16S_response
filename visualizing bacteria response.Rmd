@@ -52,13 +52,13 @@ meta_complete <- read.csv("https://www.dropbox.com/s/tzce9ie41bj3pr0/Unified_EVO
 #clean up the data
 ```{r}
 #reassign sample data column names
-colnames(meta_complete)<- c('WellID','Date','DaysPost-injection','FilterSize','EVOYear','well_id','Cell/ml',
-                            'Dissolved Oxygen (mg/L)','pH','Temperature C','Redox(mV)','SpecificConductivity.uS/cm',
-                            'watertable(famsl)','flow(cm/s)','Na(mg/L)','Mg(mg/L)', 'Al(mg/L)', 'K(mg/L)', 
-                            'Ca-42(mg/L)','Ca-43(mg/L)', 'Ca-44(mg/L)', 'Fe-54(mg/L)', 'Mn(mg/L)', 'Fe-57(mg/L)',
-                            'U-238(mg/L)', 'NO2(mg/L)', 'NO3(mg/L)', 'SO4(mg/L)', 'Lactate(uM)', 'Acetate(uM)', 
-                            'Propionate(uM)','Formate(uM)', 'Butyrate(uM)', 'Pyruvate(uM)', 'Lithium(mg/L)', 
-                            'NH4(mg/L)','well_type','Oxygen_content','nitrate_reduction','Days','sample_label')
+colnames(meta_complete) <- c('WellID','Date','DaysPostinjection','FilterSize','EVOYear','well_id','CellCount',
+                            'DissolvedOxygen _mgL','pH','Temperature C','Redox_mV','SpecificConductivity.uScm',
+                            'watertable_famsl','flow_cms','Na_mgL','Mg_mgL', 'Al_mgL', 'K_mgL', 
+                            'Ca42_mgL','Ca43_mgL', 'Ca44_mgL', 'Fe54_mgL', 'Mn_mgL', 'Fe57_mgL',
+                            'U238_mgL', 'NO2_mgL', 'NO3_mgL', 'SO4_mgL', 'Lactate_uM', 'Acetate_uM', 
+                            'Propionate_uM','Formate_uM', 'Butyrate_uM', 'Pyruvate_uM', 'Lithium_mgL', 
+                            'NH4_mgL','well_type','Oxygen_content','nitrate_reduction','Days','sample_label')
 glimpse(meta_complete)
 
 # coerce taxonomy data into a phyloseq format
@@ -72,7 +72,7 @@ taxamat <- as.matrix(taxamat[!is.na(taxamat$Phylum),])
 ```{r}
 #build a phyloseq object
 phylo2017 <- phyloseq(otu_table(otu_2017, taxa_are_rows = TRUE), phyloseq::tax_table(taxamat), 
-                      sample_data(meta_2017), tree_2017)
+                      sample_data(meta_complete), tree_2017)
 # rarefy the 2017 phyloseq object
 set.seed(0451)
 phylo2017_rarefied<-rarefy_even_depth(phylo2017,sample.size = min(sample_sums(phylo2017)))
@@ -154,12 +154,12 @@ cat("The plot has been been saved to your directory:",getwd(),"/phylum_nitrate_b
 #changes in abundance with nitrate concentration and phyla
 ```{r}
 phyloseq::psmelt(ps_phylum) %>%
-  ggplot(data = ., aes(x = Nitrate.mg.L, y = Abundance)) +
+  ggplot(data = ., aes(x = NO3_mg.L, y = Abundance)) +
   geom_smooth(aes(color=OTU))+
   geom_jitter(aes(shape =FilterSize,color=OTU), height = 0, width = .2) +
   theme_bw()+
   geom_jitter(aes(color = OTU), height = 0, width = .2) +
-  labs(x = "", y = "Number of ASVs\n", color = "Phyla") +
+  labs(x = "Nitrate (mg/L)", y = "Number of ASVs\n", color = "Phyla") +
   facet_wrap(~ OTU, scales = "free") +
   ggtitle("Changes in taxonomic abundance with nitrate content") +
   theme(axis.title = element_text(size = 12),
@@ -176,7 +176,7 @@ cat("The plot has been been saved to your directory:",getwd(),"/nitrate_lineplot
 
 #lineplot with facet by filter size
 ```{r}
-ggplot(data = ps_melt_df, aes(x = Nitrate.mg.L, y = Abundance)) +
+ggplot(data = ps_melt_df, aes(x = NO3_mg.L, y = Abundance)) +
   theme_bw()+
   geom_smooth(aes(color=OTU))+
   geom_jitter(aes(shape =FilterSize,color=OTU), height = 0, width = .2) +
@@ -204,7 +204,7 @@ melt_simple <- psmelt(phylo2017_rarefied_prune) %>%
   filter(Abundance < 10) %>% 
   select(OTU, val=Abundance)
 #view the 'rarefied' melted dataframe
-melt_simple
+head(melt_simple)
 ```
 
 #make a simple phylum-level tree
@@ -219,7 +219,7 @@ p
 ```{r}
 p2 <- facet_plot(p, panel="Abundance", data=melt_simple, 
            geom_density_ridges, mapping = aes(x=val,group=label, 
-                                   fill=Phylum, label = Family),  
+                                   fill=Phylum),  
            color='grey80', lwd=.3)
 p2
 ggsave("~/abundance_tree.png", 
@@ -245,7 +245,7 @@ colnames(meta_2017)
 ggtree(mergedMLBS, layout = "rectangular") + 
   geom_nodelab(aes(label=label), hjust=-.05, size=3.5) +
   
-  geom_point(aes(x=x+hjust, color=Nitrate.mg.L, 
+  geom_point(aes(x=x+hjust, color=NO3_mg.L, 
                  size=Abundance), alpha = 0.6, na.rm=TRUE) +
   geom_tiplab(aes(label=Family), hjust=-.5, size = 8)+   
   #scale_color_hue(l = 45) +
@@ -262,4 +262,4 @@ cat("The plot has been been saved to your directory:",getwd(),"/nitrate_MLBS_pro
 # 3. make your own phyloseq object
 # 4. change the data labels and titles to match your specific data use colnames(my metadata) to view the column names for making your own aesthetics 'aes' in the ggplots to test categories of interest for your analysis.
 
-##contact Andrew (aputt@vols.utk.edu) with questions and concerns
+##contact Andrew (aputt@vols.utk.edu) with questions or through github https://github.com/putt-ad to resolve issues
