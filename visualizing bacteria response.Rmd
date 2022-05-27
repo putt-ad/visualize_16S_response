@@ -65,13 +65,13 @@ glimpse(meta_complete)
 taxamat <- dplyr::select(taxa_2017, -ends_with(c(".Confidence"))) # remove confidence scores
 names(taxamat)[names(taxamat) == "Kingdom"] <- "Domain" # phyloseq uses 'Domain' instead of 'Kingdom'
 #remove missing
-taxamat <- taxamat[!is.na(taxamat$Phylum),]
+taxamat <- as.matrix(taxamat[!is.na(taxamat$Phylum),])
 ```
 
 #make phyloseq object
 ```{r}
 #build a phyloseq object
-phylo2017 <- phyloseq(otu_table(otu_2017, taxa_are_rows = TRUE), tax_table(as.matrix(taxamat)), 
+phylo2017 <- phyloseq(otu_table(otu_2017, taxa_are_rows = TRUE), phyloseq::tax_table(taxamat), 
                       sample_data(meta_2017), tree_2017)
 # rarefy the 2017 phyloseq object
 set.seed(0451)
