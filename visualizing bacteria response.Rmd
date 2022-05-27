@@ -1,0 +1,265 @@
+---
+title: "bacteria response tutorial"
+author: "Putt, Andrew"
+date: "5/27/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#load packages
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install(version = "3.14")
+library(BiocManager)
+
+# phyloseq installer
+source("https://raw.githubusercontent.com/joey711/phyloseq/master/inst/scripts/installer.R",
+       local = TRUE)
+# install most recent version of phyloseq from github 
+install_phyloseq(branch = "github")
+library(phyloseq)
+
+list.of.packages <- c("plyr","dplyr","tidyr","knitr","corrplot","ggcorrplot","vegan",
+                      "tidyverse","tidytree","RColorBrewer","metacoder","ggpubr","ggplot2",
+                      "ape","readr","foreach","doParallel","scales","grid","reshape2",
+                      "multcompView", "viridis","VennDiagram","UpSetR","RColorBrewer",
+                      "phyloseq","pheatmap", "base","plotly","vegan","ggpubr","ggtree", 
+                      "ggfun","ggjoy","data.table","ggstance")
+new.packages <- list.of.packages[!(list.of.packages %in% installed.packages()[,"Package"])]
+if(length(new.packages)) install.packages(new.packages) # install
+lapply(list.of.packages, require, character.only = TRUE) #  load
+
+# install bioconductor packages
+Bioc.packages <- c("microbial","microbiome","MicrobiotaProcess","DESeq2","dada2",
+                   "DECIPHER","edgeR", "ANCOMBC","lattice")
+new.Bioc.packages <- Bioc.packages[!(Bioc.packages %in% installed.packages()[,"Package"])]
+if(length(new.Bioc.packages)) BiocManager::install(new.Bioc.packages) #install
+lapply(Bioc.packages, require, character.only = TRUE) # load
+```
+
+#load data from dropbox directory
+```{r}
+#load the data (requires a stable internet connection)
+otu_2017 <-as.data.frame(read.csv("https://www.dropbox.com/s/qmcar6i70s95zub/EVO_community_2017_all_final.csv?dl=1", sep = ",", row.names = 1, stringsAsFactors = FALSE ))
+tree_2017 <- read_tree("https://www.dropbox.com/s/82oabfa65inq2ud/EVO_tree_2017_all_final.nwk?dl=1")
+taxa_2017 <-as.data.frame(read.csv("https://www.dropbox.com/s/q1erh73ml6e1ovi/EVO_clasf_2017_all_final.csv?dl=1", sep = ",", row.names = 1, stringsAsFactors = FALSE ))
+# sample data
+meta_complete <- read.csv("https://www.dropbox.com/s/tzce9ie41bj3pr0/Unified_EVO_metadata_sheet.csv?dl=1", row.names = 1,stringsAsFactors = FALSE)
+
+```
+
+#clean up the data
+```{r}
+#reassign sample data column names
+colnames(meta_complete)<- c('WellID','Date','DaysPost-injection','FilterSize','EVOYear','well_id','Cell/ml',
+                            'Dissolved Oxygen (mg/L)','pH','Temperature C','Redox(mV)','SpecificConductivity.uS/cm',
+                            'watertable(famsl)','flow(cm/s)','Na(mg/L)','Mg(mg/L)', 'Al(mg/L)', 'K(mg/L)', 
+                            'Ca-42(mg/L)','Ca-43(mg/L)', 'Ca-44(mg/L)', 'Fe-54(mg/L)', 'Mn(mg/L)', 'Fe-57(mg/L)',
+                            'U-238(mg/L)', 'NO2(mg/L)', 'NO3(mg/L)', 'SO4(mg/L)', 'Lactate(uM)', 'Acetate(uM)', 
+                            'Propionate(uM)','Formate(uM)', 'Butyrate(uM)', 'Pyruvate(uM)', 'Lithium(mg/L)', 
+                            'NH4(mg/L)','well_type','Oxygen_content','nitrate_reduction','Days','sample_label')
+glimpse(meta_complete)
+
+# coerce taxonomy data into a phyloseq format
+taxamat <- dplyr::select(taxa_2017, -ends_with(c(".Confidence"))) # remove confidence scores
+names(taxamat)[names(taxamat) == "Kingdom"] <- "Domain" # phyloseq uses 'Domain' instead of 'Kingdom'
+#remove missing
+taxamat <- taxamat[!is.na(taxamat$Phylum),]
+```
+
+#make phyloseq object
+```{r}
+#build a phyloseq object
+phylo2017 <- phyloseq(otu_table(otu_2017, taxa_are_rows = TRUE), tax_table(as.matrix(taxamat)), 
+                      sample_data(meta_2017), tree_2017)
+# rarefy the 2017 phyloseq object
+set.seed(0451)
+phylo2017_rarefied<-rarefy_even_depth(phylo2017,sample.size = min(sample_sums(phylo2017)))
+```
+
+#restrict phyla to most abundant
+```{r}
+# phylum-specific changes
+phylo2017_rarefied
+#select phyla with >500 counts
+prune_phylo2017 <-phyloseq::prune_taxa(taxa_sums(phylo2017_rarefied) > 500, phylo2017_rarefied)
+#identify table with phylum-level IDs
+table(phyloseq::tax_table(prune_phylo2017)[, "Phylum"])
+# remove low-count OTUs from phylum subset
+prune_phylo2017 <-phyloseq::subset_samples(sample_sums(prune_phylo2017) > 50, prune_phylo2017)
+ps_phylum <- phyloseq::tax_glom(prune_phylo2017, "Phylum")
+phyloseq::taxa_names(ps_phylum) <- phyloseq::tax_table(ps_phylum)[, "Phylum"]
+#melt the phyloseq metadata using the subset
+melt_pr_phylo2017_rarefied <- phyloseq::psmelt(prune_phylo2017)
+#transform phylum-level phyloseq object
+ps_phylum.df <- as.data.frame(t(otu_table(ps_phylum)))
+colnames(ps_phylum.df)
+#extract sample data related to the phyloseq
+ps_samdat.df <- as.data.frame(sample_data(phylo2017_rarefied))
+#combine sample data with pruned phyloseq data
+ps_phylum_merge <- merge(x=ps_phylum.df, y=ps_samdat.df,
+                         by = 'row.names', all = TRUE)
+#phylum changes
+ps_melt_df <- phyloseq::psmelt(ps_phylum)
+ps_melt_df <- as.data.frame(ps_melt_df)
+```
+
+#two examples of comparison box plots with wilcoxon test p-values
+```{r}
+#example 1: comparison of control and monitoring groups
+phyloseq::psmelt(ps_phylum) %>%
+  ggplot(data = ., aes(x = well_type, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  theme_bw()+
+  geom_jitter(aes(color = OTU), height = 0, width = .2) +
+  labs(x = "", y = "Number of ASVs\n", color = "Phyla") +
+  facet_wrap(~ OTU, scales = "free") +
+  ggtitle("Changes in taxonomic abundance with well type") +
+  theme(axis.title = element_text(size = 12),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        strip.text.x = element_text(size = 12),
+        axis.text = element_text(size = 12)) + stat_compare_means()
+ggsave("~/phylum_welltype_boxplot_facet.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/phylum_welltype_boxplot_facet.png")
+```
+
+#example with nitrate reduction
+```{r}
+#example 2: comparison of abundant taxa with changes in nitrate levels
+phyloseq::psmelt(ps_phylum) %>%
+  ggplot(data = ., aes(x = nitrate_reduction, y = Abundance)) +
+  geom_boxplot(outlier.shape  = NA) +
+  theme_bw()+
+  geom_jitter(aes(color = OTU), height = 0, width = .2) +
+  labs(x = "", y = "Number of ASVs\n", color = "Phyla") +
+  facet_wrap(~ OTU, scales = "free") +
+  ggtitle("Changes in taxonomic abundance with nitrate content") +
+  theme(axis.title = element_text(size = 12),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        strip.text.x = element_text(size = 12),
+        axis.text = element_text(size = 12)) +stat_compare_means()
+ggsave("~/phylum_nitrate_boxplot_facet.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/phylum_nitrate_boxplot_facet.png")
+```
+
+#changes in abundance with nitrate concentration and phyla
+```{r}
+phyloseq::psmelt(ps_phylum) %>%
+  ggplot(data = ., aes(x = Nitrate.mg.L, y = Abundance)) +
+  geom_smooth(aes(color=OTU))+
+  geom_jitter(aes(shape =FilterSize,color=OTU), height = 0, width = .2) +
+  theme_bw()+
+  geom_jitter(aes(color = OTU), height = 0, width = .2) +
+  labs(x = "", y = "Number of ASVs\n", color = "Phyla") +
+  facet_wrap(~ OTU, scales = "free") +
+  ggtitle("Changes in taxonomic abundance with nitrate content") +
+  theme(axis.title = element_text(size = 12),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        legend.position = "bottom",
+        strip.text.x = element_text(size = 12),
+        axis.text = element_text(size = 12))
+ggsave("~/nitrate_lineplot_phylum_facet.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_lineplot_phylum_facet.png")
+```
+
+#lineplot with facet by filter size
+```{r}
+ggplot(data = ps_melt_df, aes(x = Nitrate.mg.L, y = Abundance)) +
+  theme_bw()+
+  geom_smooth(aes(color=OTU))+
+  geom_jitter(aes(shape =FilterSize,color=OTU), height = 0, width = .2) +
+  labs(x = "Nitrate (mg/L)", y = "Number of ASVs\n", color = "Phyla") +
+  facet_grid(FilterSize~ OTU, scales = "free") +
+  ggtitle("Changes in taxonomic abundance with Nitrate Concentration") +
+  theme(axis.title = element_text(size = 12),
+        legend.background = element_blank(),
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        legend.position = "none",
+        strip.text.x = element_text(size = 12),
+        axis.text = element_text(size = 12))
+ggsave("~/nitrate_lineplot_phylum_filter_facet.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_lineplot_phylum_filter_facet.png")
+```
+
+#ensure that the phyloseq object is assigned properly
+```{r}
+phylo2017_rarefied_prune <- prune_taxa(taxa_sums(phylo2017_rarefied)>500, phylo2017_rarefied)
+phylo2017_rarefied_prune <- tax_glom(phylo2017_rarefied_prune, "Family")
+phylo2017_rarefied_prune
+melt_simple <- psmelt(phylo2017_rarefied_prune) %>% 
+  filter(Abundance < 10) %>% 
+  select(OTU, val=Abundance)
+#view the 'rarefied' melted dataframe
+melt_simple
+```
+
+#make a simple phylum-level tree
+```{r}
+p <- ggtree(phylo2017_rarefied_prune, layout = "rectangular") + 
+  geom_tippoint(aes(color = Phylum),
+    size = 2.5, alpha = 0.5) 
+p
+```
+
+#merge tree with abundance density plots
+```{r}
+p2 <- facet_plot(p, panel="Abundance", data=melt_simple, 
+           geom_density_ridges, mapping = aes(x=val,group=label, 
+                                   fill=Phylum, label = Family),  
+           color='grey80', lwd=.3)
+p2
+ggsave("~/abundance_tree.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/abundance_tree.png")
+```
+
+#subsetting a phyloseq object
+```{r}
+# keep only proteobacteria
+p_2017_proteo <- subset_taxa(phylo2017_rarefied_prune, Phylum=="Proteobacteria")
+# filter proteobacteria by those found in the well MLSB3 with abundant taxa identified from each day from day -6 to day 200
+sample_data(p_2017_proteo)$MLSB3 <- get_variable(p_2017_proteo, "Days") %in% 
+  c(-6:200) 
+#merging samples to a single dataframe based on well ID which in this case is 'MLSB3'
+mergedMLBS <- merge_samples(p_2017_proteo, "WellID")
+
+colnames(meta_2017)
+```
+
+#merge a ggplot object (geom_point()) into a ggplot
+```{r}
+ggtree(mergedMLBS, layout = "rectangular") + 
+  geom_nodelab(aes(label=label), hjust=-.05, size=3.5) +
+  
+  geom_point(aes(x=x+hjust, color=Nitrate.mg.L, 
+                 size=Abundance), alpha = 0.6, na.rm=TRUE) +
+  geom_tiplab(aes(label=Family), hjust=-.5, size = 8)+   
+  #scale_color_hue(l = 45) +
+  scale_size_continuous(trans=log_trans(5)) + ggtitle("Abundant Proteobacteria Families in Well MLSB3") +
+  theme(legend.position="right", title = element_text(face = "bold")) + hexpand(.4)
+ggsave("~/nitrate_MLBS_proteo_tree.png", 
+       bg = "transparent", width = 40, height = 25, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_MLBS_proteo_tree.png")
+```
+
+##To run with your own data:
+# 1. load the required packages
+# 2. input your own data 
+# 3. make your own phyloseq object
+# 4. change the data labels and titles to match your specific data use colnames(my metadata) to view the column names for making your own aesthetics 'aes' in the ggplots to test categories of interest for your analysis.
+
+##contact Andrew (aputt@vols.utk.edu) with questions and concerns
