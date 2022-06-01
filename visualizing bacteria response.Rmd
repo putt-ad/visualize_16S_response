@@ -2,6 +2,7 @@
 title: "bacteria response tutorial"
 author: "Putt, Andrew"
 date: "5/27/2022"
+this tutorial uses tools provided through phyloseq, microbiota processes, and others and are not owned, maintained, or created by the author
 output: html_document
 ---
 
@@ -256,10 +257,65 @@ ggsave("~/nitrate_MLBS_proteo_tree.png",
 cat("The plot has been been saved to your directory:",getwd(),"/nitrate_MLBS_proteo_tree.png")
 ```
 
-##To run with your own data:
+#Linear Discriminate Analysis (LDA)
+```{r}
+# ggdiffclade 
+set.seed(100)
+Nitrate_diff <- diff_analysis(obj = phylo2017_rarefied, classgroup = "nitrate_reduction",
+                       mlfun = "lda", filtermod = "pvalue", firstcomfun = "kruskal.test",
+                       firstalpha = 0.05, strictmod = TRUE, secondcomfun = "wilcox.test",
+                       subclmin = 3, subclwilc = TRUE, secondalpha = 0.01, lda=3)
+# print out results of the diff_analysis                     
+nitrate_diff_result <- as.data.frame(Nitrate_diff@result)
+write.csv(nitrate_diff_result, "~/nitrate_diff_result.csv")
+```
+
+#plot differential analysis results with abundance of taxa and linear discriminate analysis model 'effect size'
+```{r}
+# diff_clade plot
+diffclade_N <- ggdiffclade(obj=Nitrate_diff, alpha=0.3, linewd=0.15, skpointsize=0.6,
+                           layout="radial", taxlevel=3, removeUnknown=TRUE, reduce=TRUE # This argument is to remove the branch of unknown taxonomy.
+) +
+  scale_fill_manual(
+    values=c("#00AED7", "#FD9347")
+  ) +
+  guides(color = guide_legend(
+    keywidth = 0.1, keyheight = 0.6, order = 3, ncol=1)) +
+  theme(panel.background=element_rect(fill=NA),legend.position="right", 
+        plot.margin=margin(0,0,0,0), legend.spacing.y=unit(0.02, "cm"), legend.title=element_text(size=7),
+        legend.text=element_text(size=6), legend.box.spacing=unit(0.02,"cm"))
+diffclade_N
+ggsave("~/nitrate_diffclade_color_tree_plot.tiff", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_diffclade_color_tree_plot.tiff")
+```
+
+#linear range plot (using ggdiffbox)
+```{r}
+diffbox_N <- ggdiffbox(obj=Nitrate_diff, box_notch=FALSE, 
+                     colorlist=c("steelblue", "goldenrod"), l_xlabtext="relative abundance") 
+diffbox_N
+ggsave("~/nitrate_reduction_LDA_boxplot.tiff", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_reduction_LDA_boxplot.tiff")
+```
+
+#plotting just the effect size
+```{r}
+es_nitrate <- ggeffectsize(obj=Nitrate_diff, 
+                          lineheight=0.1,
+                          linewidth=0.3) + 
+  scale_color_manual(values=c("darkorange3", "slateblue")) 
+es_nitrate
+ggsave("~/nitrate_reduction_LDA_effectsize_boxplot.png", 
+       bg = "transparent", width = 60, height = 35, units = "cm")
+cat("The plot has been been saved to your directory:",getwd(),"/nitrate_reduction_LDA_effectsize_boxplot.png")
+```
+
+## To run with your own data:
 # 1. load the required packages
 # 2. input your own data 
 # 3. make your own phyloseq object
 # 4. change the data labels and titles to match your specific data use colnames(my metadata) to view the column names for making your own aesthetics 'aes' in the ggplots to test categories of interest for your analysis.
 
-##contact Andrew (aputt@vols.utk.edu) with questions or through github https://github.com/putt-ad to resolve issues
+## contact Andrew (aputt@vols.utk.edu) with questions or through github https://github.com/putt-ad to resolve issues
